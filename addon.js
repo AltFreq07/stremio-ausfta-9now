@@ -23,7 +23,7 @@ await fetchAPI();
 // Docs: https://github.com/Stremio/stremio-addon-sdk/blob/master/docs/api/responses/manifest.md
 const manifest = {
   id: "community.AusFTA",
-  version: "0.0.50",
+  version: "0.0.51",
   catalogs: [
     {
       type: "tv",
@@ -141,10 +141,12 @@ async function get9NowTvSeriesStreams(id) {
       return {
         title:
           source.codecs + " " + source.type + " " + (source.profiles || ""),
-        url: source.src,
-        key_systems: source.key_systems,
+        url:
+          source.src +
+          "?license_url=" +
+          source.key_systems["com.widevine.alpha"].license_url,
       };
-    });
+    })[0];
 }
 
 function get9NowLiveStreams(id) {
