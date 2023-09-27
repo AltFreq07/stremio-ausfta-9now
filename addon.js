@@ -142,6 +142,7 @@ async function get9NowTvSeriesStreams(id) {
         title:
           source.codecs + " " + source.type + " " + (source.profiles || ""),
         url: source.src,
+        key_systems: source.key_systems,
       };
     });
 }
