@@ -117,13 +117,22 @@ function get9NowTvSeriesCatalog() {
 }
 
 async function get9NowTvSeriesStreams(id) {
-  console.log("Getting 9Now tvseries streams for: " + id);
+  console.log("!Getting 9Now tvseries streams for!: " + id);
   //series:season:episode
   const [series, season, episode] = id.split(":");
   const seriesData = tvSeries.find((s) => s.slug === series);
+  if (!seriesData.seasons) {
+    await getSeriesData(series);
+  }
+  console.log("Got series data");
   const seasonData = seriesData.seasons.find((s) => s.slug === season);
+  if (!seasonData.episodes) {
+    await get9NowTvSeriesEpisodes(series);
+  }
+  console.log("Got episode data");
   const episodeData = seasonData.episodes.find((e) => e.slug === episode);
   //use brightcove headers
+  console.log("Getting brightcove data");
   const res = await fetch(brightcove_api(episodeData.video.referenceId), {
     headers: brightcove_headers,
   });
@@ -131,22 +140,33 @@ async function get9NowTvSeriesStreams(id) {
   return data.sources
     .filter((source) => {
       return (
-        source.src.startsWith("https://") &&
-        source.type !== "application/vnd.ms-sstr+xml" &&
-        source.key_systems &&
-        source.key_systems["com.widevine.alpha"]
+        (episodeData.video.drm &&
+          source.src.startsWith("https://") &&
+          source.type !== "application/vnd.ms-sstr+xml" &&
+          source.key_systems &&
+          source.key_systems["com.widevine.alpha"]) ||
+        (!episodeData.video.drm &&
+          source.src.startsWith("https://") &&
+          source.type &&
+          source.type !== "application/vnd.ms-sstr+xml")
       );
     })
     .map((source) => {
       return {
         title:
           source.codecs + " " + source.type + " " + (source.profiles || ""),
-        url:
-          source.src +
-          "?license_url=" +
-          source.key_systems["com.widevine.alpha"].license_url,
+        url: source.src,
+        behaviorHints: {
+          proxyHeaders: {
+            response: {
+              "content-type": source.type,
+              "license-url":
+                source.key_systems?.["com.widevine.alpha"].license_url,
+            },
+          },
+        },
       };
-    })[0];
+    });
 }
 
 function get9NowLiveStreams(id) {
@@ -157,6 +177,13 @@ function get9NowLiveStreams(id) {
       return {
         title: channel.name,
         url: channel.stream.url,
+        behaviorHints: {
+          proxyHeaders: {
+            response: {
+              "content-type": "application/vnd.apple.mpegurl",
+            },
+          },
+        },
       };
     });
 }
@@ -225,16 +252,18 @@ async function get9NowTvSeriesEpisodes(slug) {
 }
 
 async function getSeriesData(id) {
+  console.log("Getting 9Now tv series data for: " + id);
   //fetch series data then add resp.tvSeries to matching tvSeries
   const res = await fetch(series_api(id));
   const data = await res.json();
-  const index = tvSeries.findIndex((series) => series.slug === id);
   const series = tvSeries.find((series) => series.slug === id);
   Object.assign(series, data.tvSeries, {
     logo:
-      data.season.croppedLogo?.webpSizes?.w1920 ??
-      data.season.croppedLogo?.sizes?.w1920,
-    backgroundImage: data.season.backgroundImage.webpSizes.w1920,
+      data.season?.croppedLogo?.webpSizes?.w1920 ??
+      data.season?.croppedLogo?.sizes?.w1920,
+    backgroundImage:
+      data.season?.backgroundImage.webpSizes.w1920 ??
+      data.image?.webpSizes.w1920,
     seasons: data.seasons,
   });
 }
@@ -335,6 +364,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
   switch (type) {
     case "series":
       results = await get9NowTvSeriesStreams(id);
+      console.log(results);
       break;
     case "tv":
       results = get9NowLiveStreams(id);
